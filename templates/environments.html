@@ -1,0 +1,99 @@
+{{define "title"}} — Environments{{end}}
+{{define "page-title"}}Environments{{end}}
+{{define "content"}}
+{{$isAdmin := eq .User.Role "admin"}}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Environments</h2>
+    {{if $isAdmin}}
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-env')">+ Add Environment</button>
+    {{end}}
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Colour</th>
+        <th>Priority</th>
+        {{if $isAdmin}}<th>Actions</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range $i, $e := .Data}}
+      <tr>
+        <td>{{add $i 1}}</td>
+        <td><span class="color-swatch" style="background:{{if $e.Color}}{{$e.Color}}{{else}}#ccc{{end}}"></span>{{$e.Name}}</td>
+        <td><code>{{$e.Color}}</code></td>
+        <td>{{$e.Priority}}</td>
+        {{if $isAdmin}}
+        <td>
+          <button class="btn btn-ghost btn-sm"
+            onclick="populateModal('modal-edit-env',{id:'{{$e.ID}}',name:'{{$e.Name}}',color:'{{$e.Color}}',priority:'{{$e.Priority}}'});openModal('modal-edit-env')">
+            Edit
+          </button>
+          <form id="del-env-{{$e.ID}}" method="POST" action="/environments/delete" style="display:inline">
+            <input type="hidden" name="id" value="{{$e.ID}}">
+          </form>
+          <button class="btn btn-danger btn-sm" onclick="confirmDelete('del-env-{{$e.ID}}')">Delete</button>
+        </td>
+        {{end}}
+      </tr>
+      {{else}}
+      <tr><td colspan="5" style="text-align:center;color:var(--muted);">No environments found.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+{{if $isAdmin}}
+<!-- Add Modal -->
+<div class="modal-overlay" id="modal-add-env">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Environment</h3>
+      <button class="modal-close" onclick="closeModal('modal-add-env')">&times;</button>
+    </div>
+    <form method="POST" action="/environments/create">
+      <div class="form-group"><label>Name</label><input name="name" required></div>
+      <div class="form-group"><label>Default Colour</label>
+        <input type="color" name="color" value="#3498db" style="width:60px;height:36px;padding:2px;">
+      </div>
+      <div class="form-group"><label>Priority</label>
+        <input type="number" name="priority" value="0" style="width:100px;">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add-env')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modal-edit-env">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Environment</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-env')">&times;</button>
+    </div>
+    <form method="POST" action="/environments/update">
+      <input type="hidden" name="id">
+      <div class="form-group"><label>Name</label><input name="name" required></div>
+      <div class="form-group"><label>Default Colour</label>
+        <input type="color" name="color" style="width:60px;height:36px;padding:2px;">
+      </div>
+      <div class="form-group"><label>Priority</label>
+        <input type="number" name="priority" value="0" style="width:100px;">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-env')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

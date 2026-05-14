@@ -1,0 +1,188 @@
+# APICalls — Prompt History
+# This file tracks the prompts given to GitHub Copilot during the development of this application.
+# Format: [DATE] PROMPT
+
+================================================================================
+[2026-03-04] INITIAL PROMPT — Application Creation
+================================================================================
+
+I want to create a project, using the golang language.
+
+I want to make available a new application, that is a web server, where users get functionality that is in
+many ways similar to postman, SoapUI, or the Bruno application.
+
+The system will have a configuration file, with default parameters for every necessary configuration to be
+used, such as the TCP port used.
+
+The system will have a authentication page. In the first version, it may use a local authentication file.
+Throughout the application, make sure that information on the logged-in user is always visible, as well as
+the used IP. Along with this information, a logout link must be provided for the user. Users that are not
+logged in must be redirected to the login page.
+
+Every user will have a role, which may be one of the following: admin, standard, restricted, guest
+
+The application will have the several options, that are navigable from a top menu, and I will refer to as
+modules.
+
+The environment module:
+- The environment module will allow the users to define environment tags. The initial environments will be
+  PRD, QMS and DEV. Only users with the role admin may add, modify, or delete these environments, all
+  others can view.
+- An environment may have a default color associated.
+
+The variables module:
+- When accessing this module, the users will also have a table where users can manage substitution
+  variables. This means that a variable can have a specific value for each of the environments. So the
+  visual interface is a table that shows each variable name, a toggle to state if it is to be treated as a
+  password, and the values of that variable for each environment.
+- Only users with the admin and standard role may edit this information. Users with restricted role may
+  view this information as read only. Users with the guest role will not have access to the information,
+  instead a message with user does not have permissions will be shown.
+- If a variable has the treat as password toggle, that variable values for each environment is masked with
+  "*" characters.
+- Users with the admin role will have an additional button to unmask the values, and show the real values.
+- Add an option to search for variables, and filter the displayed information based on case-insensitive
+  search on the variable name.
+
+The technologies module:
+- In the technologies modules, users with the role admin and standard will be able to edit information
+  regarding technologies.
+- Defining a technology means defining the default fields, to be used in a technology block such as:
+  technology name, http method, URL, body, headers and custom values list.
+
+The templates module:
+- The templates module will allow users to view, add, modify or delete templates.
+- The interface will be shown as a list, and also allow the user to enter a detailed edit mode.
+- Each template will have a URL, body, and custom values.
+- A template may be flagged as "restricted execution"
+- The user will also have available the technologies from the technologies module. If the users select
+  this, then it copies the values from method, URL, body, headers and custom values list from the
+  technology, to this templates.
+- In any field on this page, if a substitution variable is found, there should be displayed an additional
+  visual information to highlight the variable, in a color different from the background.
+
+The execution module:
+- In the execution module, users may choose the environment from the available, and select a template.
+- It will have an "run" button that will be available only for admin and standard roles. Restricted will
+  have the button available only if the restricted execution option is not set. guest role may view, but
+  not execute. This is running a template.
+- The run button and the environment selection will be displayed in the default colour for the environment,
+  if one is set.
+- Allow the admin and standard users to add notes. Notes have a text area and a title, and may be set as
+  private or public. Private are visible only for the user creating the note, public are available for all
+  users. Note may be associated for a specific environment, or applicable for all environments. Notes are
+  to appear as a list on the right side of the screen.
+
+The users module:
+- Allows for users that have the admin role to access this page, and edit add or delete user information.
+  This information has the username, password, and the role. The role is to be selected as a dropdown
+  option from the possible roles, and the default is standard.
+
+At this moment, use a local storage as the database. You can use either a local sql repository, or file
+Make sure the service is working with http. Generate a local certificate file, that I may update later to
+a signed certificate.
+
+Whenever a user accesses a module, edits information, executes some action, add a log entry in a log file.
+Each entry must have the timestamp in year-month-day:hour:minutes:seconds format, the user, the module,
+and a brief description of what the user has done. Entries are to be added whenever the user logs in,
+accesses each module, edit a template, edits the environment, and runs a template.
+
+Make sure that the code is structured in multiple files that aggregate logical functionality.
+
+Always make sure that the prompts.txt has the list of prompts given for this applications, and is updated
+on new prompts.
+
+================================================================================
+
+================================================================================
+[2026-03-04] PROMPT — Default admin password
+================================================================================
+
+add a user admin with password admin123
+
+================================================================================
+
+================================================================================
+[2026-03-04] PROMPT — Login fix
+================================================================================
+
+it seems that user admin cannot login with the password. Can you check?
+
+================================================================================
+
+================================================================================
+[2026-03-04] PROMPT — Edit button fix
+================================================================================
+
+The edit button on the templates and users modules does not seem to be working. Can you check?
+
+================================================================================
+
+================================================================================
+[2026-03-05] PROMPT — Execution module: client-side variable resolution and run
+================================================================================
+
+In the execution module, when the user presses the run button, then gather all information to do a web
+service request, and do the request. Before calling the request, for each information check if a variable
+needs to be replaced from the variables list, matching the selected environment. If there is a variable
+present in the request information but not on the variables list, open popup to explicitly ask the user
+for the replacement values. Save the values per variable, and use them as default. The default will be
+the proposed value, if this variable is used again in future calls. Display both the final request and
+the output, in aside by side text boxes.
+
+================================================================================
+
+================================================================================
+[2026-03-05] PROMPT — Fix template parse error in execution module
+================================================================================
+
+There is an error when I access the execution module. Can you check why I get "template error: template:
+execution.html:7: function "placeholder" not defined" message, and fix it?
+
+================================================================================
+
+================================================================================
+[2026-03-05] PROMPT — Environment priority attribute
+================================================================================
+
+When I edit the environments, I want to add a new attribute which will be the priority, and this will be
+an integer. By default, the value will be 0. Whenever a screen displays environments, the default
+behavior is to sort by priority and show higher priority first.
+
+================================================================================
+
+================================================================================
+[2026-03-05] PROMPT — Execution module layout: env+template+detail
+================================================================================
+
+On the execution module, move the environment select bar to a line above, and the template selection is
+to be moved below. When selecting a template, show below the detail fields for the template. The user may
+edit the values, but the changes here are not to be stored. Instead, they will be used to run the web
+service (button run).
+
+================================================================================
+
+================================================================================
+[2026-03-05] PROMPT — Notes: all-environments vs specific environment scope
+================================================================================
+
+On the execution module, the notes may be applicable in all environments, or only for the selected
+environment. The user should be offered an option to select which is the case.
+
+================================================================================
+
+================================================================================
+[2026-04-23] PROMPT — Parse Variables button in Edit Template modal
+================================================================================
+
+Where using the parse variable, I [want] the platform to iterate each value in the variable menu
+(which can be from any environment), see if they are present in any field of the edit template menu,
+and replace the text with a corresponding variable tag. It does not seem to be working, I tested in
+the searchworkorder template and it does not find the URL tag.
+
+Implemented a "Parse Variables" button inside the Edit Template modal (visible to admin/standard users).
+When clicked it fetches all variables via /api/variables, collects every non-empty value across all
+environments, sorts them longest-first (to avoid partial substitutions), and replaces any literal
+occurrence in the URL, Body, Headers, and Custom Values fields with the corresponding {{VAR_NAME}} tag.
+
+================================================================================

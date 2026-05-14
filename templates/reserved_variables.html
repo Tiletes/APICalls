@@ -1,0 +1,118 @@
+{{template "layout" .}}
+
+{{define "title"}} — Reserved Variables{{end}}
+{{define "page-title"}}Reserved Variables{{end}}
+
+{{define "content"}}
+{{$d := .Data}}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+  <div>
+    <h2 style="margin:0;">Reserved Variables</h2>
+    <p style="color:var(--muted);font-size:.85rem;margin:4px 0 0;">
+      System-defined substitution keywords available in all templates.
+      Reference them using the <code style="background:var(--bg2);padding:1px 5px;border-radius:3px;">{{"{{"}}NAME{{"}}"}}</code> syntax.
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:160px;">Token</th>
+        <th>Description</th>
+        <th style="width:80px;">Resolved as</th>
+        {{if $d.CanEdit}}<th style="width:80px;text-align:right;">Actions</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range $d.ReservedVars}}
+      <tr>
+        <td>
+          <code class="reserved-badge">{{"{{"}}{{.Name}}{{"}}"}}</code>
+        </td>
+        <td style="color:var(--text);">{{if .Description}}{{.Description}}{{else}}<span style="color:var(--muted);">—</span>{{end}}</td>
+        <td style="color:var(--muted);font-size:.8rem;">
+          {{if eq .Name "GUID"}}Random UUID{{end}}
+          {{if eq .Name "GUID1"}}Random UUID (independent){{end}}
+          {{if eq .Name "SERVICENAME"}}Template field{{end}}
+          {{if eq .Name "CURRENT_TIME"}}yyyymmdd-hh24miss{{end}}
+          {{if eq .Name "APPNAME"}}APICaller{{end}}
+          {{if eq .Name "APPUSER"}}Current login{{end}}
+        </td>
+        {{if $d.CanEdit}}
+        <td style="text-align:right;">
+          <button class="btn btn-sm btn-ghost"
+            onclick="openEditModal({{printf "%q" .Name}}, {{printf "%q" .Description}})">
+            Edit
+          </button>
+        </td>
+        {{end}}
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="card-header"><h2>Usage Notes</h2></div>
+  <ul style="margin:8px 0;padding-left:20px;font-size:.88rem;line-height:1.7;">
+    <li>Reserved variables are <strong>computed at execution time</strong> and cannot be created, renamed, or deleted by users.</li>
+    <li><code class="reserved-badge">{{"{{"}}GUID{{"}}"}}</code> generates a fresh UUID v4 per run — format: <code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>.</li>
+    <li><code class="reserved-badge">{{"{{"}}GUID1{{"}}"}}</code> generates a second, independent UUID v4 in the same format — use both in the same request to get two different values.</li>
+    <li><code class="reserved-badge">{{"{{"}}SERVICENAME{{"}}"}}</code> reflects the <em>Service Name</em> field set on the selected template.</li>
+    <li><code class="reserved-badge">{{"{{"}}CURRENT_TIME{{"}}"}}</code> uses the server's execution timestamp, e.g. <code>20260306-152012</code>.</li>
+    <li>In the Execution module, tokens in blue are reserved variables whose values are filled in automatically before the request is sent.</li>
+    <li>You can still override a token value by editing the field manually before clicking <strong>Run</strong>.</li>
+  </ul>
+</div>
+
+{{if $d.CanEdit}}
+<!-- Edit description modal -->
+<div id="modal-edit-resv" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('modal-edit-resv')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Description</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-resv')">&times;</button>
+    </div>
+    <form method="POST" action="/reserved-variables/update-description">
+      <input type="hidden" name="name" id="edit-resv-name">
+      <div class="form-group">
+        <label>Reserved Variable</label>
+        <input id="edit-resv-display" type="text" readonly
+          style="font-family:monospace;color:var(--muted);background:var(--bg2);">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea name="description" id="edit-resv-desc" rows="3" placeholder="Describe what this reserved variable produces…"></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-resv')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function openEditModal(name, description) {
+  document.getElementById('edit-resv-name').value    = name;
+  document.getElementById('edit-resv-display').value = '{{"{{"}}' + name + '{{"}}"}}';
+  document.getElementById('edit-resv-desc').value    = description;
+  openModal('modal-edit-resv');
+}
+</script>
+<style>
+code.reserved-badge {
+  background: rgba(37,99,235,.1);
+  color: #2563eb;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: .88rem;
+  font-family: monospace;
+}
+</style>
+{{end}}

@@ -1,0 +1,28 @@
+{{define "title"}} — Login{{end}}
+{{define "page-title"}}Login{{end}}
+{{define "content"}}
+<div class="login-wrapper">
+  <div class="login-box">
+    <h1>&#9889; APICalls</h1>
+    <p class="subtitle">API Testing Platform — sign in to continue</p>
+
+    {{if .Flash}}
+    <div class="flash error" style="margin-bottom:16px;">{{.Flash}}</div>
+    {{end}}
+
+    <form method="POST" action="/login">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" name="username" autocomplete="username" autofocus required placeholder="Enter username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" autocomplete="current-password" required placeholder="Enter password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;">
+        Sign In
+      </button>
+    </form>
+  </div>
+</div>
+{{end}}

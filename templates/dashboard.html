@@ -1,0 +1,51 @@
+{{define "title"}} — Dashboard{{end}}
+{{define "page-title"}}Dashboard{{end}}
+{{define "content"}}
+<div class="card">
+  <div class="card-header">
+    <h2>Welcome, {{.User.Username}}</h2>
+  </div>
+  <p style="color:var(--muted);font-size:.9rem;">
+    Use the sidebar to navigate between modules.
+    You are logged in as <strong>{{roleLabel .User.Role}}</strong> from <strong>{{.ClientIP}}</strong>.
+  </p>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:20px;">
+    <a href="/environments"      class="btn btn-primary">&#127757; Environments</a>
+    <a href="/variables"         class="btn btn-primary">&#128196; Variables</a>
+    <a href="/reserved-variables" class="btn btn-primary">&#128273; Reserved Vars</a>
+    <a href="/technologies"      class="btn btn-primary">&#9881; Technologies</a>
+    <a href="/templates"         class="btn btn-primary">&#128196; Templates</a>
+    <a href="/execution"         class="btn btn-success">&#9654; Execution</a>
+    {{if eq .User.Role "admin"}}
+    <a href="/users"        class="btn btn-warn">&#128100; Users</a>
+    {{end}}
+  </div>
+</div>
+
+{{if .Environments}}
+<div class="card">
+  <div class="card-header"><h2>Environments</h2></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+  {{range .Environments}}
+    <a href="/execution?env_id={{.ID}}" class="env-badge" style="background:{{if .Color}}{{.Color}}{{else}}#888{{end}}">
+      {{.Name}}
+    </a>
+  {{end}}
+  </div>
+</div>
+{{end}}
+
+<div class="card" style="margin-top:8px;">
+  <div class="card-header"><h2>&#8505; Application Info</h2></div>
+  <table style="font-size:.88rem;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 16px 4px 0;color:var(--muted);white-space:nowrap;">Version</td>
+      <td style="padding:4px 0;"><strong>{{.AppVersion}}</strong></td>
+    </tr>
+    <tr>
+      <td style="padding:4px 16px 4px 0;color:var(--muted);white-space:nowrap;">Build time</td>
+      <td style="padding:4px 0;"><strong>{{.AppBuildTime}}</strong></td>
+    </tr>
+  </table>
+</div>
+{{end}}

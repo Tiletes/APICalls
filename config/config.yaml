@@ -1,0 +1,17 @@
+server:
+  port: 8443
+  host: "0.0.0.0"
+  tls_cert: "certs/server.crt"
+  tls_key: "certs/server.key"
+
+database:
+  path: "data/apicalls.db"
+
+session:
+  secret: "change-me-to-a-random-secret-key-32bytes"
+  name: "apicalls_session"
+  max_age: 86400
+
+log:
+  path: "logs/apicalls.log"
+  tech_path: "logs/technical.log"

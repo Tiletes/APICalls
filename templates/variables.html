@@ -1,0 +1,218 @@
+{{define "title"}} — Variables{{end}}
+{{define "page-title"}}Variables{{end}}
+{{define "content"}}
+{{$d := .Data}}
+
+{{if eq .User.Role "guest"}}
+<div class="card">
+  <p style="color:var(--muted);padding:16px;">&#128274; You do not have permission to view variables.</p>
+</div>
+{{else}}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Substitution Variables</h2>
+    {{if $d.CanEdit}}
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-var')">+ Add Variable</button>
+    {{end}}
+  </div>
+
+  <!-- Search -->
+  <form method="GET" action="/variables" class="search-bar">
+    <input name="search" placeholder="Search by variable name…" value="{{$d.Search}}">
+    <button type="submit" class="btn btn-ghost btn-sm">&#128269; Search</button>
+    {{if $d.Search}}<a href="/variables" class="btn btn-ghost btn-sm">&times; Clear</a>{{end}}
+  </form>
+
+  <div style="overflow-x:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Variable</th>
+        <th>Password</th>
+        {{range $d.Environments}}<th>{{.Name}}</th>{{end}}
+        {{if $d.CanEdit}}<th>Actions</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+    {{range $d.Variables}}
+    {{$v := .}}
+    <tr>
+      <td><strong>{{$v.Name}}</strong></td>
+      <td>
+        {{if $v.IsPassword}}
+        <span style="color:var(--warn);">&#128274; Yes</span>
+        {{else}}
+        <span style="color:var(--muted);">No</span>
+        {{end}}
+      </td>
+      {{range $d.Environments}}
+      {{$envName := .Name}}
+      {{$val := index $v.Values $envName}}
+      <td>
+        {{if $v.IsPassword}}
+          <span id="var-{{$v.ID}}-{{$envName}}" data-real="{{$val}}" data-masked="1">••••••••</span>
+          {{if $.User}}{{if eq $.User.Role "admin"}}
+          <button class="btn btn-ghost btn-sm" onclick="toggleMask(this,'var-{{$v.ID}}-{{$envName}}')">Show</button>
+          {{end}}{{end}}
+        {{else}}
+          {{$val}}
+        {{end}}
+      </td>
+      {{end}}
+      {{if $d.CanEdit}}
+      <td>
+        {{$vj := $v.ValuesJSON}}
+        <button class="btn btn-ghost btn-sm"
+          data-vid="{{$v.ID}}"
+          data-vname="{{$v.Name}}"
+          data-vpass="{{if $v.IsPassword}}1{{else}}0{{end}}"
+          data-vvals="{{$vj}}"
+          onclick="openEditVarModalFromBtn(this)">Edit</button>
+        <form id="del-var-{{$v.ID}}" method="POST" action="/variables/delete" style="display:inline">
+          <input type="hidden" name="id" value="{{$v.ID}}">
+        </form>
+        <button class="btn btn-danger btn-sm" onclick="confirmDelete('del-var-{{$v.ID}}')">Delete</button>
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td colspan="99" style="text-align:center;color:var(--muted);">No variables found.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{{if $d.CanEdit}}
+<!-- Add Modal -->
+<div class="modal-overlay" id="modal-add-var">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Variable</h3>
+      <button class="modal-close" onclick="closeModal('modal-add-var')">&times;</button>
+    </div>
+    <form method="POST" action="/variables/create">
+      <div class="form-group"><label>Name</label><input name="name" required placeholder="e.g. BASE_URL"></div>
+      <div class="form-group">
+        <label>Treat as Password</label>
+        <label class="toggle"><input type="checkbox" id="add-var-pass" name="is_password" value="1"
+          onchange="onAddPassToggle()"><span class="slider"></span></label>
+      </div>
+      {{range $d.Environments}}
+      <div class="form-group">
+        <label>Value — <span class="color-swatch" style="background:{{if .Color}}{{.Color}}{{else}}#888{{end}}"></span>{{.Name}}</label>
+        <input name="val_{{.Name}}" placeholder="Value for {{.Name}}" class="add-env-val">
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add-var')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modal-edit-var">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Variable</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-var')">&times;</button>
+    </div>
+    <form method="POST" action="/variables/update" id="form-edit-var">
+      <input type="hidden" name="id" id="edit-var-id">
+      <div class="form-group"><label>Name</label><input name="name" id="edit-var-name" required></div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;">
+          Treat as Password
+          <label class="toggle" style="margin:0;">
+            <input type="checkbox" id="edit-var-pass" name="is_password" value="1"
+              onchange="onEditPassToggle()">
+            <span class="slider"></span>
+          </label>
+          <span id="edit-pass-locked-msg" style="display:none;font-size:.78rem;color:var(--muted);">&#128274; Only administrators can remove password protection</span>
+        </label>
+      </div>
+      {{range $d.Environments}}
+      <div class="form-group">
+        <label>Value — <span class="color-swatch" style="background:{{if .Color}}{{.Color}}{{else}}#888{{end}}"></span>{{.Name}}</label>
+        <input name="val_{{.Name}}" id="edit-var-{{.Name}}" class="edit-env-val" autocomplete="new-password">
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-var')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{end}}
+{{define "scripts"}}
+<script>
+const _varUserRole = {{printf "%q" .User.Role}};
+
+/* ── Helpers ───────────────────────────────────────── */
+function setInputTypes(selector, type) {
+  document.querySelectorAll(selector).forEach(el => el.type = type);
+}
+
+/* ── Add modal: password toggle ─────────────────────── */
+function onAddPassToggle() {
+  const checked = document.getElementById('add-var-pass')?.checked;
+  setInputTypes('.add-env-val', checked ? 'password' : 'text');
+}
+
+/* ── Edit modal: populate & apply masking ────────────── */
+function openEditVarModalFromBtn(btn) {
+  const id     = btn.dataset.vid;
+  const name   = btn.dataset.vname;
+  const isPass = btn.dataset.vpass === '1';
+  let values = {};
+  try { values = JSON.parse(btn.dataset.vvals || '{}'); } catch(e) {}
+
+  document.getElementById('edit-var-id').value    = id;
+  document.getElementById('edit-var-name').value  = name;
+
+  const cb = document.getElementById('edit-var-pass');
+  cb.checked = isPass;
+
+  // Role-based lock: standard users cannot remove password protection
+  const isAdmin = _varUserRole === 'admin';
+  if (isPass && !isAdmin) {
+    cb.disabled = true;
+    document.getElementById('edit-pass-locked-msg').style.display = 'inline';
+  } else {
+    cb.disabled = false;
+    document.getElementById('edit-pass-locked-msg').style.display = 'none';
+  }
+
+  // Populate values and mask if password
+  Object.entries(values).forEach(([env, val]) => {
+    const el = document.getElementById('edit-var-' + env);
+    if (el) el.value = val;
+  });
+  setInputTypes('.edit-env-val', isPass ? 'password' : 'text');
+
+  openModal('modal-edit-var');
+}
+
+/* ── Edit modal: toggle changed by user ─────────────── */
+function onEditPassToggle() {
+  const cb      = document.getElementById('edit-var-pass');
+  const checked = cb.checked;
+  const isAdmin = _varUserRole === 'admin';
+
+  // If a non-admin somehow triggers this while it was locked, revert
+  if (!checked && !isAdmin) {
+    cb.checked = true;
+    return;
+  }
+
+  setInputTypes('.edit-env-val', checked ? 'password' : 'text');
+}
+</script>
+{{end}}

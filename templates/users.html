@@ -1,0 +1,95 @@
+{{define "title"}} — Users{{end}}
+{{define "page-title"}}Users{{end}}
+{{define "content"}}
+{{$d := .Data}}
+
+<div class="card">
+  <div class="card-header">
+    <h2>User Management</h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-user')">+ Add User</button>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr><th>#</th><th>Username</th><th>Role</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+    {{range $i, $u := index $d "Users"}}
+    <tr>
+      <td>{{add $i 1}}</td>
+      <td><strong>{{$u.Username}}</strong></td>
+      <td><span class="role-badge role-{{$u.Role}}">{{roleLabel $u.Role}}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm"
+          onclick="populateModal('modal-edit-user',{id:'{{$u.ID}}',username:'{{$u.Username}}',role:'{{$u.Role}}'});openModal('modal-edit-user')">
+          Edit
+        </button>
+        <form id="del-user-{{$u.ID}}" method="POST" action="/users/delete" style="display:inline">
+          <input type="hidden" name="id" value="{{$u.ID}}">
+        </form>
+        <button class="btn btn-danger btn-sm" onclick="confirmDelete('del-user-{{$u.ID}}')">Delete</button>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="4" style="text-align:center;color:var(--muted);">No users found.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="modal-add-user">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add User</h3>
+      <button class="modal-close" onclick="closeModal('modal-add-user')">&times;</button>
+    </div>
+    <form method="POST" action="/users/create">
+      <div class="form-group"><label>Username</label><input name="username" required autocomplete="off"></div>
+      <div class="form-group"><label>Password</label><input type="password" name="password" required autocomplete="new-password"></div>
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          {{range index $d "Roles"}}
+          <option value="{{.}}" {{if eq . "standard"}}selected{{end}}>{{roleLabel .}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add-user')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit User</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-user')">&times;</button>
+    </div>
+    <form method="POST" action="/users/update">
+      <input type="hidden" name="id">
+      <div class="form-group"><label>Username</label><input name="username" required autocomplete="off"></div>
+      <div class="form-group">
+        <label>New Password <span style="color:var(--muted);font-weight:400;">(leave blank to keep)</span></label>
+        <input type="password" name="password" autocomplete="new-password" placeholder="Enter new password…">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          {{range index $d "Roles"}}
+          <option value="{{.}}">{{roleLabel .}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-user')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

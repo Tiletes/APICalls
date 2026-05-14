@@ -1,0 +1,1069 @@
+{{define "title"}} — Execution{{end}}
+{{define "page-title"}}Execution{{end}}
+{{define "content"}}
+{{$d := .Data}}
+
+<!-- ═══════════════════════════════════════════════════════
+     Variable override modal — shown when a placeholder
+     (double-brace syntax) is used in a template but has no
+     value in the selected environment and no saved default
+     in localStorage.
+════════════════════════════════════════════════════════ -->
+<div id="modal-var-override" class="modal-overlay">
+  <div class="modal" style="min-width:420px;max-width:560px;">
+    <div class="modal-header">
+      <h3>Undefined Variables</h3>
+      <button type="button" onclick="closeModal('modal-var-override')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;color:var(--muted);font-size:.88rem;">
+        The following placeholders are not defined in the Variables page for the selected environment.
+        Confirm or change the values below — they will be saved as defaults for future calls.
+      </p>
+      <div id="var-override-fields"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button type="button" class="btn" onclick="closeModal('modal-var-override')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="submitVarOverrides()">Continue &amp; Run</button>
+    </div>
+  </div>
+</div>
+
+<div class="exec-layout">
+<!-- ════ Left: Controls + Results ════ -->
+<div>
+
+  <!-- Row 1: Environment -->
+  <div class="card">
+    <div class="card-header"><h2>Environment</h2></div>
+    <select id="exec-env" onchange="updateEnvStyle(this)" style="font-weight:600;width:100%;">
+      <option value="">— Select Environment —</option>
+      {{range $d.Environments}}
+      <option value="{{.ID}}"
+        data-color="{{.Color}}"
+        {{if $d.SelectedEnv}}{{if eq $d.SelectedEnv.ID .ID}}selected{{end}}{{end}}>
+        {{.Name}}
+      </option>
+      {{end}}
+    </select>
+  </div>
+
+  <!-- Row 2: Template -->
+  <div class="card">
+    <div class="card-header"><h2>Template</h2></div>
+    <select id="exec-tmpl" onchange="onTmplChange(this)" style="width:100%;">
+      <option value="">— Select Template —</option>
+      {{range $d.Templates}}
+      <option value="{{.ID}}"
+        {{if $d.SelectedTmpl}}{{if eq $d.SelectedTmpl.ID .ID}}selected{{end}}{{end}}>
+        {{.Name}}{{if .RestrictedExecution}} 🔒{{end}}
+      </option>
+      {{end}}
+    </select>
+  </div>
+
+  <!-- Row 3: Editable request details (shown after template is selected; changes not persisted) -->
+  <div id="tmpl-detail" class="card" style="display:none;">
+    <div class="card-header">
+      <h2>Request Details</h2>
+      {{if eq .User.Role "restricted"}}
+      <span id="restricted-msg" style="color:var(--warn);font-size:.82rem;display:none;">&#128274; Restricted — cannot execute</span>
+      {{end}}
+    </div>
+    <form id="form-run" onsubmit="startRun(event)">
+
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 130px;">
+          <label>Method</label>
+          <select id="tmpl-method">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option>
+            <option>HEAD</option><option>OPTIONS</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>URL</label>
+          <input id="tmpl-url" type="text" placeholder="https://..." autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 180px;">
+          <label>Service Name</label>
+          <input id="tmpl-service-name" type="text" placeholder="—" readonly
+            style="color:var(--muted);background:var(--bg2,#f8fafc);">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Headers
+          <span style="font-weight:400;color:var(--muted);font-size:.78rem;margin-left:6px;">one Key: Value per line</span>
+        </label>
+        <textarea id="tmpl-headers" rows="4"
+          style="font-family:monospace;font-size:.82rem;resize:vertical;"
+          placeholder="Content-Type: application/json"></textarea>
+      </div>
+
+      <div class="form-group">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <label style="margin:0;">Body</label>
+          <button type="button" class="btn btn-sm"
+            onclick="verifyBody()"
+            style="padding:1px 9px;font-size:.75rem;">
+            &#10003; Verify
+          </button>
+          <button type="button" class="btn btn-sm"
+            onclick="copyToClipboard(document.getElementById('tmpl-body').value, this)"
+            style="padding:1px 9px;font-size:.75rem;">&#128203; Copy</button>
+        </div>
+        <textarea id="tmpl-body" rows="6"
+          style="font-family:monospace;font-size:.82rem;resize:vertical;"
+          placeholder="{}"></textarea>
+        <div id="body-verify-result" style="display:none;margin-top:6px;padding:6px 10px;border-radius:4px;
+          font-size:.8rem;font-family:monospace;border-left:3px solid;"></div>
+      </div>
+
+      {{if $d.CanRun}}
+      <button type="submit" class="btn btn-success" id="run-btn" style="margin-top:4px;"
+        {{if not $d.SelectedEnv}}disabled title="Select an environment first"{{end}}>
+        &#9654; Run
+      </button>
+      {{else}}
+      <p style="color:var(--muted);font-size:.85rem;margin-top:4px;">
+        &#128274; You do not have permission to execute templates.
+      </p>
+      {{end}}
+
+    </form>
+  </div>
+
+  <!-- Error banner (client-side) -->
+  <div id="exec-error" class="flash error" style="display:none;"></div>
+
+  <!-- ════ Side-by-side results ════ -->
+  <div id="exec-results" style="display:none;margin-top:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
+
+      <!-- Final resolved request -->
+      <div class="card" style="margin:0;">
+        <div class="card-header">
+          <h2>Final Request</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="copy-btn-request"
+            onclick="copyToClipboard(document.getElementById('result-request').innerText, this)"
+            style="font-size:.75rem;">&#128203; Copy</button>
+        </div>
+        <pre id="result-request" class="code-block"
+             style="min-height:200px;max-height:480px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
+      </div>
+
+      <!-- Response -->
+      <div class="card" style="margin:0;">
+        <div class="card-header">
+          <h2>Response</h2>
+          <span id="result-duration" style="font-size:.8rem;color:var(--muted);"></span>
+        </div>
+        <div id="result-status" style="margin-bottom:8px;"></div>
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <strong style="font-size:.82rem;">Headers</strong>
+            <button type="button" class="btn btn-ghost btn-sm" id="copy-btn-resp-headers"
+              onclick="copyToClipboard(document.getElementById('result-resp-headers').textContent, this)"
+              style="font-size:.72rem;padding:1px 7px;">&#128203; Copy</button>
+          </div>
+          <pre id="result-resp-headers" class="code-block"
+               style="max-height:120px;overflow:auto;white-space:pre-wrap;font-size:.78rem;margin-top:0;"></pre>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <strong style="font-size:.82rem;">Body</strong>
+            <span id="result-body-format"
+              style="display:none;font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+                     padding:1px 7px;border-radius:10px;color:#fff;"></span>
+            <button type="button" id="result-body-beautify"
+              onclick="toggleBeautify()"
+              style="display:none;padding:1px 9px;font-size:.75rem;cursor:pointer;"
+              class="btn btn-sm">Beautify</button>
+            <button type="button" class="btn btn-sm" id="copy-btn-resp-body"
+              onclick="copyToClipboard(document.getElementById('result-body').textContent, this)"
+              style="display:none;padding:1px 9px;font-size:.75rem;">&#128203; Copy</button>
+          </div>
+          <pre id="result-body" class="code-block"
+               style="min-height:80px;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:0;"></pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════ Right: Notes ════ -->
+<!-- Placeholder when no template is selected -->
+<div id="notes-placeholder" style="padding:24px 8px;text-align:center;color:var(--muted);font-size:.88rem;">
+  &#128203; Select a template to view and add notes.
+</div>
+
+<!-- Notes panel — hidden until a template is chosen -->
+<div class="notes-panel" id="notes-panel" style="display:none;">
+  {{if $d.CanAddNote}}
+  <div class="card">
+    <div class="card-header"><h2>Add Note</h2></div>
+    <form method="POST" action="/execution/notes/add" id="form-add-note">
+      <!-- env_id and template_id are injected by JS -->
+      <input type="hidden" name="env_id" id="note-env-id" value="">
+      <input type="hidden" name="template_id" id="note-tmpl-id" value="">
+      <div class="form-group"><label>Title</label><input name="title" required></div>
+      <div class="form-group"><label>Body</label><textarea name="body" rows="3"></textarea></div>
+      <div class="form-group">
+        <label class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" name="is_private" value="1"><span class="slider"></span></label>
+          Private (visible only to me)
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="note-scope-toggle" onchange="updateNoteScope()"><span class="slider"></span></label>
+          Specific to current environment
+          <span id="note-scope-label" style="font-size:.78rem;color:var(--muted);margin-left:6px;">
+            (currently: <strong>all environments</strong>)
+          </span>
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
+    </form>
+  </div>
+  {{end}}
+
+  <div id="notes-list-header" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:8px 0 4px;">
+    Notes
+  </div>
+
+  <!-- Notes are rendered dynamically by JS (see loadNotes()) -->
+  <div id="notes-list">
+    <p style="color:var(--muted);font-size:.85rem;">Loading…</p>
+  </div>
+</div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+/* ── State ───────────────────────────────────────────────── */
+let _pendingReq        = null;
+let _pendingDisplayReq = null; // mirrors _pendingReq but password vars are left as raw placeholders
+let _passwordNames     = new Set(); // variable names marked is_password
+let _varMap            = {}; // env-scoped variable map { name -> value } for the current run
+const _currentUser = {{printf "%q" .User.Username}};
+// Response body state
+let _rawBody      = '';
+let _bodyFormat   = 'TEXT';   // 'JSON' | 'XML' | 'TEXT'
+let _isBeautified = false;
+// Current environment name (kept in sync with the env selector)
+let _currentEnvName = '';
+// localStorage keys
+const _LS_ENV      = 'exec_last_env_' + _currentUser;
+const _LS_BEAUTIFY = 'exec_beautify_pref';
+/* ── Init ────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function () {
+  // ── Restore last selected environment (if server didn't pre-select one) ──
+  const envSel = document.getElementById('exec-env');
+  if (envSel && !envSel.value) {
+    const savedEnv = localStorage.getItem(_LS_ENV);
+    if (savedEnv) {
+      for (let o of envSel.options) {
+        if (o.value === savedEnv) { o.selected = true; break; }
+      }
+    }
+  }
+  updateEnvStyle(envSel);
+  updateNoteScope();
+  // If a template is already pre-selected (e.g., page loaded with ?template_id=X), show notes panel
+  const tmplSel = document.getElementById('exec-tmpl');
+  if (tmplSel && tmplSel.value) {
+    document.getElementById('note-tmpl-id') && (document.getElementById('note-tmpl-id').value = tmplSel.value);
+    showNotesPanel();
+    loadNotes();
+  }
+
+  // Intercept Add Note form — submit via fetch to avoid full page reload
+  const noteForm = document.getElementById('form-add-note');
+  if (noteForm) noteForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitNote(noteForm);
+  });
+});
+
+/* ── Environment style ───────────────────────────────────── */
+function updateEnvStyle(sel) {
+  const opt = sel ? sel.options[sel.selectedIndex] : null;
+  const color = opt ? opt.dataset.color : '';
+  const btn = document.getElementById('run-btn');
+  if (btn && color) btn.style.background = color;
+  _currentEnvName = opt ? opt.text.trim() : '';
+  // Persist the selected environment so it survives page reloads / re-logins
+  if (sel && sel.value) localStorage.setItem(_LS_ENV, sel.value);
+  updateRunBtn();
+  updateNoteScope(); // re-evaluate the note scope label & hidden field
+  loadNotes();       // refresh notes for new env context
+}
+
+/* ── Run button enable/disable ────────────────────────────── */
+function updateRunBtn() {
+  const btn = document.getElementById('run-btn');
+  if (!btn) return;
+  const envSel = document.getElementById('exec-env');
+  const hasEnv = !!(envSel && envSel.value);
+  btn.disabled = !hasEnv;
+  btn.title = hasEnv ? '' : 'Select an environment first';
+}
+
+/* ── Note scope toggle ───────────────────────────────────── */
+function updateNoteScope() {
+  const envSel   = document.getElementById('exec-env');
+  const toggle   = document.getElementById('note-scope-toggle');
+  const hidden   = document.getElementById('note-env-id');
+  const label    = document.getElementById('note-scope-label');
+  if (!toggle || !hidden) return;
+
+  const isSpecific = toggle.checked;
+  const envName    = envSel ? (envSel.options[envSel.selectedIndex]?.text || '').trim() : '';
+  const envId      = envSel ? envSel.value : '';
+
+  if (isSpecific && envId) {
+    hidden.value  = envId;
+    if (label) label.innerHTML = '(currently: <strong style="color:var(--accent);">' + esc(envName) + '</strong>)';
+  } else {
+    hidden.value  = '';
+    if (label) label.innerHTML = '(currently: <strong>all environments</strong>)';
+    if (isSpecific && !envId && toggle) {
+      // No env selected — force toggle off
+      toggle.checked = false;
+      if (label) label.innerHTML = '(currently: <strong>all environments</strong> — select an environment first)';
+    }
+  }
+}
+
+/* ── Template selection: load fields ─────────────────────── */
+async function onTmplChange(sel) {
+  const tmplId = sel.value;
+  const detail = document.getElementById('tmpl-detail');
+  clearResults();
+
+  if (!tmplId) {
+    detail.style.display = 'none';
+    const sn = document.getElementById('tmpl-service-name');
+    if (sn) sn.value = '';
+    hideNotesPanel();
+    return;
+  }
+
+  // Set template id for the Add Note form
+  const noteTmplInput = document.getElementById('note-tmpl-id');
+  if (noteTmplInput) noteTmplInput.value = tmplId;
+
+  try {
+    const tmpl = await fetch('/api/templates/' + tmplId)
+      .then(r => { if (!r.ok) throw new Error('Template not found'); return r.json(); });
+
+    const methodSel = document.getElementById('tmpl-method');
+    const method = (tmpl.method || 'GET').toUpperCase();
+    for (let o of methodSel.options) o.selected = (o.value === method);
+
+    document.getElementById('tmpl-url').value          = tmpl.url  || '';
+    document.getElementById('tmpl-body').value         = tmpl.body || '';
+    document.getElementById('tmpl-service-name').value = tmpl.service_name || '';
+    document.getElementById('tmpl-headers').value = headersToText(tmpl.headers);
+
+    {{if eq .User.Role "restricted"}}
+    const msg = document.getElementById('restricted-msg');
+    const btn = document.getElementById('run-btn');
+    const isRestricted = !!(tmpl.restricted_execution);
+    if (msg) msg.style.display = isRestricted ? 'inline' : 'none';
+    if (btn) btn.disabled = isRestricted;
+    {{end}}
+
+    detail.style.display = 'block';
+    showNotesPanel();
+    loadNotes();
+  } catch (err) {
+    showExecError(err.message);
+  }
+}
+
+/* ── Notes panel show/hide ───────────────────────────────── */
+function showNotesPanel() {
+  const panel = document.getElementById('notes-panel');
+  const placeholder = document.getElementById('notes-placeholder');
+  if (panel) panel.style.display = '';
+  if (placeholder) placeholder.style.display = 'none';
+}
+
+function hideNotesPanel() {
+  const panel = document.getElementById('notes-panel');
+  const placeholder = document.getElementById('notes-placeholder');
+  if (panel) panel.style.display = 'none';
+  if (placeholder) placeholder.style.display = '';
+  // Also clear note-tmpl-id
+  const noteTmplInput = document.getElementById('note-tmpl-id');
+  if (noteTmplInput) noteTmplInput.value = '';
+}
+
+/* ── Load & render notes ─────────────────────────────────── */
+async function loadNotes() {
+  const tmplSel = document.getElementById('exec-tmpl');
+  const envSel  = document.getElementById('exec-env');
+  const tmplId  = tmplSel ? tmplSel.value : '';
+  const envId   = envSel  ? envSel.value  : '';
+  if (!tmplId) return; // no template selected — nothing to load
+
+  const list = document.getElementById('notes-list');
+  if (!list) return;
+
+  try {
+    const notes = await fetch('/api/notes?env_id=' + encodeURIComponent(envId) + '&template_id=' + encodeURIComponent(tmplId))
+      .then(r => r.json());
+    renderNotes(list, notes, envId, tmplId);
+  } catch (_) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:.85rem;">Failed to load notes.</p>';
+  }
+}
+
+function renderNotes(container, notes, envId, tmplId) {
+  if (!notes || notes.length === 0) {
+    container.innerHTML = '<p style="color:var(--muted);font-size:.85rem;">No notes for this context.</p>';
+    return;
+  }
+  container.innerHTML = notes.map(n => {
+    const privBadge = n.is_private
+      ? '&#128274; Private'
+      : '&#127758; Public';
+    const envBadge = n.environment_id
+      ? '&#127991; Env-specific'
+      : '<span title="Visible in all environments">&#127758; All environments</span>';
+    const date = (function() {
+      if (!n.created_at) return '';
+      const d = new Date(n.created_at);
+      if (isNaN(d.getTime()) || d.getFullYear() < 2) return '';
+      const pad = v => String(v).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+             ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    })();
+    const deleteBtn = (n.owner_username === _currentUser)
+      ? '<button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px;margin-left:4px;" ' +
+          'onclick="deleteNote(' + n.id + ',\'' + esc(envId) + '\',\'' + esc(tmplId) + '\')">' +
+          '&#10005;</button>'
+      : '';
+    return '<div class="note-card ' + (n.is_private ? 'note-private' : 'note-public') + '">' +
+      '<div class="note-title">' + esc(n.title) + '</div>' +
+      '<div>' + esc(n.body) + '</div>' +
+      '<div class="note-meta">' + privBadge + ' &bull; ' + envBadge + ' &bull; ' +
+        esc(n.owner_username) + ' &bull; ' + esc(date) + deleteBtn +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── Note AJAX helpers ──────────────────────────────────── */
+async function submitNote(form) {
+  const tmplId = document.getElementById('note-tmpl-id')?.value || '';
+  if (!tmplId) {
+    showNoteFlash('Select a template before saving a note.', true);
+    return;
+  }
+  const data = new FormData(form);
+  try {
+    const resp = await fetch('/execution/notes/add', { method: 'POST', body: data });
+    const json = await resp.json();
+    if (resp.ok && json.ok) {
+      // Reset only the user-visible fields; keep env_id / template_id hidden inputs intact
+      form.querySelector('[name="title"]').value = '';
+      const bodyField = form.querySelector('[name="body"]');
+      if (bodyField) bodyField.value = '';
+      const privCheck = form.querySelector('[name="is_private"]');
+      if (privCheck) privCheck.checked = false;
+      const scopeToggle = document.getElementById('note-scope-toggle');
+      if (scopeToggle) { scopeToggle.checked = false; updateNoteScope(); }
+      await loadNotes();
+      showNoteFlash('Note saved.');
+    } else {
+      showNoteFlash((json && json.error) ? json.error : 'Failed to save note.', true);
+    }
+  } catch (err) {
+    showNoteFlash('Error: ' + err.message, true);
+  }
+}
+
+async function deleteNote(id, envId, tmplId) {
+  const data = new FormData();
+  data.append('id', id);
+  data.append('env_id', envId);
+  data.append('template_id', tmplId);
+  try {
+    const resp = await fetch('/execution/notes/delete', { method: 'POST', body: data });
+    const json = await resp.json();
+    if (resp.ok && json.ok) {
+      await loadNotes();
+    } else {
+      showNoteFlash((json && json.error) ? json.error : 'Failed to delete note.', true);
+    }
+  } catch (err) {
+    showNoteFlash('Error: ' + err.message, true);
+  }
+}
+
+function showNoteFlash(msg, isError) {
+  let el = document.getElementById('note-flash');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'note-flash';
+    el.style.cssText = 'font-size:.82rem;padding:6px 10px;border-radius:4px;margin-bottom:8px;';
+    const panel = document.getElementById('notes-panel');
+    if (panel) panel.insertBefore(el, panel.firstChild);
+  }
+  el.textContent = msg;
+  el.style.background = isError ? 'var(--danger, #c00)' : 'var(--success, #2a7)';
+  el.style.color = '#fff';
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+/* ── Headers <-> textarea helpers ────────────────────────── */
+function headersToText(headers) {
+  return (headers || []).filter(h => h.key).map(h => h.key + ': ' + (h.value || '')).join('\n');
+}
+
+function parseHeadersText(text) {
+  const rows = [];
+  (text || '').split('\n').forEach(line => {
+    const idx = line.indexOf(':');
+    if (idx > 0) rows.push({ key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() });
+  });
+  return rows;
+}
+
+/* ── Main run flow ───────────────────────────────────────── */
+async function startRun(e) {
+  e.preventDefault();
+
+  const envSel  = document.getElementById('exec-env');
+  const envId   = envSel.value;
+  const envName = (envSel.options[envSel.selectedIndex]?.text || '').trim();
+  const tmplId  = document.getElementById('exec-tmpl').value;
+
+  if (!envId || !tmplId) {
+    showExecError('Please select both an environment and a template.');
+    return;
+  }
+
+  // Read current values from the editable fields — NOT re-fetched from storage
+  const editedTmpl = {
+    method:       document.getElementById('tmpl-method').value,
+    url:          document.getElementById('tmpl-url').value,
+    body:         document.getElementById('tmpl-body').value,
+    headers:      parseHeadersText(document.getElementById('tmpl-headers').value),
+    service_name: (document.getElementById('tmpl-service-name')?.value || '').trim(),
+  };
+
+  setBusy(true);
+  clearResults();
+
+  try {
+    const allVars = await fetch('/api/variables').then(r => r.json());
+
+    // Build env-scoped variable map { name -> value }
+    const varMap = {};
+    (allVars || []).forEach(v => {
+      if (v.values && v.values[envName] !== undefined && v.values[envName] !== '') {
+        varMap[v.name] = v.values[envName];
+      }
+    });
+    _varMap = varMap; // expose for password masking in executeRequest
+
+    // Collect all placeholder names from the edited fields
+    const RE = /\{\{([^}]+)\}\}/g;
+    function extractVars(text) {
+      const names = new Set(); let m; RE.lastIndex = 0;
+      while ((m = RE.exec(text || '')) !== null) names.add(m[1]);
+      return names;
+    }
+    const allNames = new Set([
+      ...extractVars(editedTmpl.url),
+      ...extractVars(editedTmpl.body),
+      ...editedTmpl.headers.flatMap(h => [...extractVars(h.key), ...extractVars(h.value)]),
+    ]);
+
+    // Track which variable names are passwords
+    _passwordNames = new Set((allVars || []).filter(v => v.is_password).map(v => v.name));
+
+    // Reserved variables are resolved server-side — never prompt the user for them.
+    const _reservedVars = new Set(['SERVICENAME', 'GUID', 'GUID1', 'CURRENT_TIME', 'APPNAME', 'APPUSER']);
+
+    // Resolve what we can; track what's not in the Variables page
+    const overrides = {}; // name -> resolved (env-sourced only)
+    const missing   = []; // names not in the Variables page → always prompt
+
+    allNames.forEach(name => {
+      if (_reservedVars.has(name)) {
+        // leave as-is — the server will substitute these
+      } else if (varMap[name] !== undefined) {
+        overrides[name] = varMap[name]; // defined in Variables page → resolve silently
+      } else {
+        missing.push(name); // not in Variables page → always ask (pre-fill saved default)
+      }
+    });
+
+    // Resolve for actual request (all vars substituted)
+    function resolve(s) {
+      return (s || '').replace(/\{\{([^}]+)\}\}/g, (_, n) => overrides[n] !== undefined ? overrides[n] : ('{' + '{' + n + '}' + '}'));
+    }
+    // Resolve for display (password vars are left as raw placeholder text, not substituted)
+    function resolveDisplay(s) {
+      return (s || '').replace(/\{\{([^}]+)\}\}/g, (_, n) => {
+        if (_passwordNames.has(n)) return '{' + '{' + n + '}' + '}';
+        return overrides[n] !== undefined ? overrides[n] : ('{' + '{' + n + '}' + '}');
+      });
+    }
+
+    const headers = {};
+    const displayHeaders = {};
+    editedTmpl.headers.forEach(h => {
+      headers[resolve(h.key)]        = resolve(h.value);
+      displayHeaders[resolveDisplay(h.key)] = resolveDisplay(h.value);
+    });
+
+    _pendingReq = {
+      method:       editedTmpl.method,
+      url:          resolve(editedTmpl.url),
+      headers:      headers,
+      body:         resolve(editedTmpl.body),
+      service_name: editedTmpl.service_name,
+    };
+    _pendingDisplayReq = {
+      method:  editedTmpl.method,
+      url:     resolveDisplay(editedTmpl.url),
+      headers: displayHeaders,
+      body:    resolveDisplay(editedTmpl.body),
+    };
+
+    if (missing.length > 0) {
+      showVarModal(missing);   // user will call submitVarOverrides() → executeRequest()
+    } else {
+      await executeRequest(_pendingReq);
+    }
+  } catch (err) {
+    showExecError(err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ── Variable override modal ─────────────────────────────── */
+function showVarModal(missing) {
+  const container = document.getElementById('var-override-fields');
+  container.innerHTML = '';
+  missing.forEach(name => {
+    const saved = localStorage.getItem('var_default_' + name) || '';
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.innerHTML =
+      '<label style="font-family:monospace;">' + '{' + '{' + esc(name) + '}' + '}</label>' +
+      '<input type="text" data-var="' + esc(name) + '" value="' + esc(saved) + '" ' +
+      'placeholder="Value for ' + esc(name) + '">';
+    container.appendChild(div);
+  });
+  openModal('modal-var-override');
+}
+
+async function submitVarOverrides() {
+  const inputs = document.querySelectorAll('#var-override-fields input[data-var]');
+  const newOverrides = {};
+  inputs.forEach(inp => {
+    newOverrides[inp.dataset.var] = inp.value;
+    localStorage.setItem('var_default_' + inp.dataset.var, inp.value);
+  });
+
+  // Apply user-supplied values to the still-pending request
+  function resolve(s) {
+    return (s || '').replace(/\{\{([^}]+)\}\}/g, (_, n) => newOverrides[n] !== undefined ? newOverrides[n] : ('{' + '{' + n + '}' + '}'));
+  }
+  // Display version: skip password vars (they stay as raw placeholder text)
+  function resolveDisplay(s) {
+    return (s || '').replace(/\{\{([^}]+)\}\}/g, (_, n) => {
+      if (_passwordNames.has(n)) return '{' + '{' + n + '}' + '}';
+      return newOverrides[n] !== undefined ? newOverrides[n] : ('{' + '{' + n + '}' + '}');
+    });
+  }
+  if (_pendingReq) {
+    _pendingReq.url  = resolve(_pendingReq.url);
+    _pendingReq.body = resolve(_pendingReq.body);
+    const h2 = {};
+    Object.entries(_pendingReq.headers || {}).forEach(([k, v]) => { h2[resolve(k)] = resolve(v); });
+    _pendingReq.headers = h2;
+  }
+  if (_pendingDisplayReq) {
+    _pendingDisplayReq.url  = resolveDisplay(_pendingDisplayReq.url);
+    _pendingDisplayReq.body = resolveDisplay(_pendingDisplayReq.body);
+    const h2 = {};
+    Object.entries(_pendingDisplayReq.headers || {}).forEach(([k, v]) => { h2[resolveDisplay(k)] = resolveDisplay(v); });
+    _pendingDisplayReq.headers = h2;
+  }
+
+  closeModal('modal-var-override');
+  setBusy(true);
+  try {
+    await executeRequest(_pendingReq);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ── HTTP execution ──────────────────────────────────────── */
+async function executeRequest(reqData) {
+  clearResults();
+  try {
+    const resp = await fetch('/api/execution/run', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(reqData),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      showExecError('Request error: ' + data.error);
+      return;
+    }
+
+    // ── Render Final Request ──────────────────────────────────────────────
+    // Use the server-echoed request (fully resolved, incl. reserved vars).
+    // Mask password variable *values* back to their placeholder tag form so
+    // they are never shown in plain text; renderPwdTags() then styles the tags.
+    const serverReq = data.request;
+    function maskPwdValues(s) {
+      let out = s || '';
+      _passwordNames.forEach(name => {
+        const val = _varMap[name];
+        if (val) out = out.split(val).join('{' + '{' + name + '}' + '}');
+      });
+      return out;
+    }
+    let reqText = (serverReq.method || '') + ' ' + maskPwdValues(serverReq.url || '') + '\n';
+    if (serverReq.headers && Object.keys(serverReq.headers).length) {
+      Object.entries(serverReq.headers).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
+        reqText += maskPwdValues(k) + ': ' + maskPwdValues(v) + '\n';
+      });
+    }
+    if (serverReq.body) reqText += '\n' + maskPwdValues(serverReq.body);
+    document.getElementById('result-request').innerHTML = renderPwdTags(reqText);
+
+    // ── Render Response ───────────────────────────────────
+    const res = data.response;
+    const okClass = res.status_code < 300 ? 'status-ok' : 'status-err';
+    document.getElementById('result-status').innerHTML =
+      '<strong>Status:</strong> <span class="' + okClass + '">' + esc(res.status) + '</span>';
+    document.getElementById('result-duration').textContent = res.duration;
+
+    let headerText = '';
+    if (res.headers) {
+      Object.entries(res.headers).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
+        headerText += k + ': ' + (Array.isArray(v) ? v[0] : v) + '\n';
+      });
+    }
+    document.getElementById('result-resp-headers').textContent = headerText;
+
+    // ── Detect body format and render raw ──────────────────────────────────
+    _rawBody      = res.body || '';
+    _bodyFormat   = detectBodyFormat(_rawBody);
+    _isBeautified = false;
+
+    const fmtBadge    = document.getElementById('result-body-format');
+    const fmtBtn      = document.getElementById('result-body-beautify');
+    const fmtPalette  = { JSON: '#2563eb', XML: '#7c3aed', TEXT: '#64748b' };
+    fmtBadge.textContent    = _bodyFormat;
+    fmtBadge.style.display  = 'inline';
+    fmtBadge.style.background = fmtPalette[_bodyFormat] || '#64748b';
+    const canBeautify = (_bodyFormat === 'JSON' || _bodyFormat === 'XML');
+    fmtBtn.style.display    = canBeautify ? '' : 'none';
+    const copyBodyBtn = document.getElementById('copy-btn-resp-body');
+    if (copyBodyBtn) copyBodyBtn.style.display = _rawBody ? '' : 'none';
+    document.getElementById('result-body').textContent = _rawBody;
+    // ── Restore beautify preference ───────────────────────────────────────
+    if (canBeautify && localStorage.getItem(_LS_BEAUTIFY) === '1') {
+      toggleBeautify(); // apply beautify immediately using the saved preference
+    } else {
+      fmtBtn.textContent = 'Beautify';
+    }
+
+    document.getElementById('exec-results').style.display = 'block';
+
+  } catch (err) {
+    showExecError('Network error: ' + err.message);
+  }
+}
+
+/* ── Request body verifier ────────────────────────────────── */
+async function verifyBody() {
+  const raw  = (document.getElementById('tmpl-body')?.value || '').trim();
+  const el   = document.getElementById('body-verify-result');
+  if (!el) return;
+
+  // Build timestamp string
+  const now = new Date();
+  const pad = v => String(v).padStart(2, '0');
+  const ts  = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) +
+              ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+
+  if (!raw) {
+    el.style.display      = 'block';
+    el.style.background   = 'var(--bg2, #f8fafc)';
+    el.style.borderColor  = 'var(--muted, #94a3b8)';
+    el.style.color        = 'var(--muted, #64748b)';
+    el.textContent        = '[' + ts + ']  Body is empty — nothing to verify.';
+    return;
+  }
+
+  // ── Temporarily substitute variables so placeholders don't break parsing ──
+  let text = raw;
+  try {
+    const allVars = await fetch('/api/variables').then(r => r.json());
+    const envName = _currentEnvName;
+    // Regular variables (env-scoped)
+    (allVars || []).forEach(v => {
+      if (v.values && v.values[envName] !== undefined && v.values[envName] !== '') {
+        text = text.split('{' + '{' + v.name + '}' + '}').join(v.values[envName]);
+      }
+    });
+    // Reserved variables — replace with representative dummy values
+    const svcName = (document.getElementById('tmpl-service-name')?.value || 'SERVICE').trim();
+    const reserved = {
+      SERVICENAME:  svcName || 'SERVICE',
+      GUID:         '00000000-0000-0000-0000-000000000000',
+      GUID1:        '11111111-1111-1111-1111-111111111111',
+      CURRENT_TIME: ts.replace(' ', 'T').replace(/-/g, '').replace(/:/g, ''),
+      APPNAME:      'APICaller',
+      APPUSER:      _currentUser,
+    };
+    Object.entries(reserved).forEach(([k, v]) => {
+      text = text.split('{' + '{' + k + '}' + '}').join(v);
+    });
+  } catch (_) { /* if fetch fails, verify the raw text as-is */ }
+
+  let fmt    = 'TEXT';
+  let valid  = false;
+  let detail = '';
+
+  // ─ Try JSON ──────────────────────────────────────────────
+  if (text[0] === '{' || text[0] === '[') {
+    try {
+      JSON.parse(text);
+      fmt    = 'JSON';
+      valid  = true;
+      detail = 'Valid JSON';
+    } catch (e) {
+      fmt    = 'JSON';
+      valid  = false;
+      detail = 'Invalid JSON — ' + e.message;
+    }
+  }
+
+  // ─ Try XML (only if not already identified as JSON) ─────────────
+  if (fmt === 'TEXT' && text[0] === '<') {
+    try {
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      const err = doc.querySelector('parsererror');
+      fmt = 'XML';
+      if (!err) {
+        valid  = true;
+        detail = 'Valid XML';
+      } else {
+        valid  = false;
+        const msg = err.textContent.split('\n')[0].trim();
+        detail = 'Invalid XML — ' + msg;
+      }
+    } catch (e) {
+      fmt    = 'XML';
+      valid  = false;
+      detail = 'Invalid XML — ' + e.message;
+    }
+  }
+
+  // ─ Plain text fallback ────────────────────────────────────
+  if (fmt === 'TEXT') {
+    valid  = true;   // plain text is always "valid"
+    detail = 'Plain text body — no structured format detected';
+  }
+
+  // ─ Render result ─────────────────────────────────────────
+  const fmtColors  = { JSON: '#2563eb', XML: '#7c3aed', TEXT: '#64748b' };
+  const okColor    = 'var(--success, #16a34a)';
+  const failColor  = 'var(--danger,  #dc2626)';
+  const textColor  = fmtColors[fmt] || '#64748b';
+  const stateColor = (fmt === 'TEXT') ? textColor : (valid ? okColor : failColor);
+  const stateIcon  = (fmt === 'TEXT') ? '\u2139\ufe0f'  : (valid ? '\u2705' : '\u274c');
+
+  el.style.display     = 'block';
+  el.style.borderColor = stateColor;
+  el.style.background  = 'var(--bg2, #f8fafc)';
+  el.style.color       = 'var(--fg, #1e293b)';
+
+  el.innerHTML =
+    '[' + esc(ts) + ']&nbsp;&nbsp;' +
+    'Format: <strong style="color:' + textColor + ';">' + fmt + '</strong>' +
+    '&nbsp;&nbsp;|&nbsp;&nbsp;' +
+    stateIcon + '&nbsp;<span style="color:' + stateColor + ';">' + esc(detail) + '</span>';
+}
+
+/* ── Response body: format detection & beautify ───────────── */
+
+// Returns 'JSON', 'XML', or 'TEXT' for a given raw body string.
+function detectBodyFormat(text) {
+  const t = (text || '').trim();
+  if (!t) return 'TEXT';
+
+  // JSON: must parse cleanly and start with { or [
+  if (t[0] === '{' || t[0] === '[') {
+    try { JSON.parse(t); return 'JSON'; } catch (_) {}
+  }
+
+  // XML / HTML: starts with < and DOMParser reports no parseerror
+  if (t[0] === '<') {
+    try {
+      const doc = new DOMParser().parseFromString(t, 'application/xml');
+      if (!doc.querySelector('parsererror')) return 'XML';
+    } catch (_) {}
+  }
+
+  return 'TEXT';
+}
+
+// Naive XML pretty-printer: re-serialises with 2-space indentation.
+function prettyXML(text) {
+  try {
+    const doc = new DOMParser().parseFromString(text.trim(), 'application/xml');
+    if (doc.querySelector('parsererror')) return text; // not valid XML — return as-is
+    const lines = [];
+    function walk(node, depth) {
+      const pad = '  '.repeat(depth);
+      if (node.nodeType === Node.TEXT_NODE) {
+        const v = node.nodeValue.trim();
+        if (v) lines.push(pad + v);
+        return;
+      }
+      if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
+        lines.push(pad + '<?' + node.target + ' ' + node.data + '?>');
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      // Build opening tag
+      let attrs = '';
+      for (const a of node.attributes) attrs += ' ' + a.name + '="' + a.value + '"';
+      const hasChildren = node.childNodes.length > 0;
+      if (!hasChildren) { lines.push(pad + '<' + node.nodeName + attrs + '/>'); return; }
+      // Check if sole text child
+      if (node.childNodes.length === 1 && node.firstChild.nodeType === Node.TEXT_NODE) {
+        const v = node.firstChild.nodeValue.trim();
+        lines.push(pad + '<' + node.nodeName + attrs + '>' + v + '</' + node.nodeName + '>');
+        return;
+      }
+      lines.push(pad + '<' + node.nodeName + attrs + '>');
+      for (const child of node.childNodes) walk(child, depth + 1);
+      lines.push(pad + '</' + node.nodeName + '>');
+    }
+    for (const child of doc.childNodes) walk(child, 0);
+    return lines.join('\n');
+  } catch (_) {
+    return text;
+  }
+}
+
+// Toggle between raw and pretty-printed body.
+function toggleBeautify() {
+  const pre = document.getElementById('result-body');
+  const btn = document.getElementById('result-body-beautify');
+  if (_isBeautified) {
+    pre.textContent  = _rawBody;
+    btn.textContent  = 'Beautify';
+    _isBeautified    = false;
+    localStorage.setItem(_LS_BEAUTIFY, '0');
+  } else {
+    let pretty = _rawBody;
+    if (_bodyFormat === 'JSON') {
+      try { pretty = JSON.stringify(JSON.parse(_rawBody), null, 2); } catch (_) {}
+    } else if (_bodyFormat === 'XML') {
+      pretty = prettyXML(_rawBody);
+    }
+    pre.textContent = pretty;
+    btn.textContent = 'Raw';
+    _isBeautified   = true;
+    localStorage.setItem(_LS_BEAUTIFY, '1');
+  }
+}
+/* ── Copy to clipboard ───────────────────────────────────────── */
+function copyToClipboard(text, btn) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(function() {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '&#10003; Copied';
+    btn.disabled = true;
+    setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+  }).catch(function() {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const orig = btn.innerHTML;
+    btn.innerHTML = '&#10003; Copied';
+    btn.disabled = true;
+    setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+  });
+}
+
+/* ── Password-tag renderer ──────────────────────────────────── */
+// HTML-escape plain text then style any surviving password placeholders
+// as gray badges (only is_password vars survive to this point).
+function renderPwdTags(text) {
+  const e = (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return e.replace(/\{\{([^}]+)\}\}/g, (_, n) =>
+    '<span style="background:#666;color:#fff;border-radius:3px;' +
+    'padding:1px 5px;font-family:monospace;font-size:.85em;" ' +
+    'title="Password variable — value hidden">' +
+    '&#123;&#123;' + n.replace(/&/g,'&amp;') + '&#125;&#125;</span>');
+}
+/* ── Helpers ─────────────────────────────────────────────── */
+function setBusy(busy) {
+  const btn = document.getElementById('run-btn');
+  if (!btn) return;
+  btn.innerHTML = busy ? '&#9203; Running&hellip;' : '&#9654; Run';
+  if (busy) {
+    btn.disabled = true;
+  } else {
+    updateRunBtn(); // re-enable only if an env is still selected
+  }
+}
+
+function clearResults() {
+  document.getElementById('exec-results').style.display = 'none';
+  document.getElementById('exec-error').style.display   = 'none';
+  // Reset body format badge and beautify button
+  const fmtBadge = document.getElementById('result-body-format');
+  const fmtBtn   = document.getElementById('result-body-beautify');
+  if (fmtBadge) fmtBadge.style.display = 'none';
+  if (fmtBtn)   fmtBtn.style.display   = 'none';
+  const copyBodyBtn = document.getElementById('copy-btn-resp-body');
+  if (copyBodyBtn) copyBodyBtn.style.display = 'none';
+  _rawBody      = '';
+  _bodyFormat   = 'TEXT';
+  _isBeautified = false;
+}
+
+function showExecError(msg) {
+  const el = document.getElementById('exec-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+</script>
+{{end}}
+

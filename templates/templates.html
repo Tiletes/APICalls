@@ -1,0 +1,524 @@
+{{define "title"}} — Templates{{end}}
+{{define "page-title"}}Templates{{end}}
+{{define "content"}}
+{{$d := .Data}}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Request Templates</h2>
+    {{if $d.CanEdit}}
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-tmpl')">+ Add Template</button>
+    <button class="btn btn-ghost btn-sm" onclick="openModal('modal-wsdl')">&#128195; Import WSDL</button>
+    {{end}}
+  </div>
+  <div style="padding:8px 12px;border-bottom:1px solid var(--border,#e2e8f0);display:flex;align-items:center;gap:8px;">
+    <input id="tmpl-filter" type="text" placeholder="Filter by name, service name or path…"
+      oninput="filterTemplates()"
+      style="flex:1;padding:6px 10px;border:1px solid var(--border,#ddd);border-radius:4px;font-size:.88rem;">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('tmpl-filter').value='';filterTemplates();">&#10005; Clear</button>
+    <span id="tmpl-filter-count" style="font-size:.8rem;color:var(--muted);"></span>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Name</th><th>Service Name</th><th>Path</th><th>Method</th><th>URL</th><th>Restricted</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="tmpl-tbody">
+    {{range $i, $t := $d.Templates}}
+    <tr data-name="{{$t.Name}}" data-svc="{{$t.ServiceName}}" data-path="{{$t.Path}}">
+      <td>{{add $i 1}}</td>
+      <td><strong>{{$t.Name}}</strong></td>
+      <td>{{if $t.ServiceName}}<span style="font-size:.82rem;color:var(--muted);">{{$t.ServiceName}}</span>{{else}}<span style="color:var(--muted);font-size:.78rem;">—</span>{{end}}</td>
+      <td>{{if $t.Path}}<span style="font-size:.82rem;color:var(--muted);">{{$t.Path}}</span>{{else}}<span style="color:var(--muted);font-size:.78rem;">—</span>{{end}}</td>
+      <td><code>{{$t.Method}}</code></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="{{$t.URL}}">{{$t.URL}}</td>
+      <td>{{if $t.RestrictedExecution}}<span style="color:var(--warn);">&#128274; Yes</span>{{else}}No{{end}}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="openTmplEdit({{$t.ID}})">Edit</button>
+        {{if $d.CanEdit}}
+        <button class="btn btn-ghost btn-sm" onclick="openSaveCopy({{$t.ID}}, '{{$t.Name}}')">&#128203; Copy</button>
+        <form id="del-tmpl-{{$t.ID}}" method="POST" action="/templates/delete" style="display:inline">
+          <input type="hidden" name="id" value="{{$t.ID}}">
+        </form>
+        <button class="btn btn-danger btn-sm" onclick="confirmDelete('del-tmpl-{{$t.ID}}')">Delete</button>
+        {{end}}
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);">No templates defined.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add Modal -->
+{{if $d.CanEdit}}
+<div class="modal-overlay" id="modal-add-tmpl">
+  <div class="modal" style="width:680px;">
+    <div class="modal-header">
+      <h3>Add Template</h3>
+      <button class="modal-close" onclick="closeModal('modal-add-tmpl')">&times;</button>
+    </div>
+    <form method="POST" action="/templates/create" id="form-add-tmpl">
+      <div class="form-group">
+        <label>Copy from Technology</label>
+        <select onchange="loadTechnology(this,'form-add-tmpl')">
+          <option value="">— Select technology to import —</option>
+          {{range $d.Technologies}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Template Name</label><input name="name" id="add-tmpl-name" required></div>
+        <div class="form-group"><label>Service Name</label><input name="service_name" id="add-tmpl-service-name" placeholder="optional"></div>
+        <div class="form-group"><label>HTTP Method</label>
+          <select name="method">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Path</label>
+        <input name="path" id="add-tmpl-path" placeholder="optional — e.g. Finance / Payments">
+      </div>
+      <div class="form-group">
+        <label>URL</label>
+        <input name="url" id="add-tmpl-url" oninput="previewVars(this,'add-url-preview')" placeholder="https://api.example.com/{{"{{"}}ENV_HOST{{"}}"}}">
+        <div id="add-url-preview" class="var-preview"></div>
+      </div>
+      <div class="form-group">
+        <label>Body</label>
+        <textarea name="body" id="add-tmpl-body" oninput="previewVars(this,'add-body-preview')"></textarea>
+        <div id="add-body-preview" class="var-preview code-block" style="min-height:0;margin-top:4px;display:none;"></div>
+      </div>
+      <div class="form-group">
+        <label>Headers</label>
+        <div id="headers-editor" class="kv-editor"></div>
+        <input type="hidden" name="headers_json" id="headers_json" value="[]">
+        <button type="button" class="btn btn-ghost btn-sm kv-add-btn" onclick="kvAddRow('headers-editor')">+ Add Header</button>
+      </div>
+      <div class="form-group">
+        <label>Custom Values</label>
+        <div id="custom-values-editor" class="kv-editor"></div>
+        <input type="hidden" name="custom_values_json" id="custom_values_json" value="[]">
+        <button type="button" class="btn btn-ghost btn-sm kv-add-btn" onclick="kvAddRow('custom-values-editor')">+ Add Custom Value</button>
+      </div>
+      <div class="form-group">
+        <label class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" name="restricted_execution" value="1"><span class="slider"></span></label>
+          Restricted Execution
+        </label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add-tmpl')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+<!-- Edit Modal (read+write for admin/standard, read-only view otherwise) -->
+<div class="modal-overlay" id="modal-edit-tmpl">
+  <div class="modal" style="width:680px;">
+    <div class="modal-header">
+      <h3>Edit Template</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-tmpl')">&times;</button>
+    </div>
+    <form method="POST" action="/templates/update" id="form-edit-tmpl">
+      <input type="hidden" name="id" id="edit-tmpl-id">
+      {{if $d.CanEdit}}
+      <div class="form-group">
+        <label>Copy from Technology</label>
+        <select onchange="loadTechnology(this,'form-edit-tmpl')">
+          <option value="">— Select technology to import —</option>
+          {{range $d.Technologies}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--bg-alt,#f4f4f4);border-radius:6px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-parse-vars" onclick="parseVarsIntoTemplate()">&#128269; Parse Variables</button>
+        <span style="font-size:.8rem;color:var(--muted);">Scan all fields and replace known variable literal values with their variable tags.</span>
+      </div>
+      {{end}}
+      <div class="form-row">
+        <div class="form-group"><label>Template Name</label>
+          <input name="name" id="edit-tmpl-name" {{if not $d.CanEdit}}readonly{{end}} required>
+        </div>
+        <div class="form-group"><label>Service Name</label>
+          <input name="service_name" id="edit-tmpl-service-name" {{if not $d.CanEdit}}readonly{{end}} placeholder="optional">
+        </div>
+        <div class="form-group"><label>HTTP Method</label>
+          <select name="method" id="edit-tmpl-method" {{if not $d.CanEdit}}disabled{{end}}>
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Path</label>
+        <input name="path" id="edit-tmpl-path" {{if not $d.CanEdit}}readonly{{end}} placeholder="optional — e.g. Finance / Payments">
+      </div>
+      <div class="form-group">
+        <label>URL</label>
+        <input name="url" id="edit-tmpl-url" {{if not $d.CanEdit}}readonly{{end}} oninput="previewVars(this,'edit-url-preview')">
+        <div id="edit-url-preview" class="var-preview"></div>
+      </div>
+      <div class="form-group">
+        <label>Body</label>
+        <textarea name="body" id="edit-tmpl-body" {{if not $d.CanEdit}}readonly{{end}} oninput="previewVars(this,'edit-body-preview')"></textarea>
+        <div id="edit-body-preview" class="var-preview code-block" style="min-height:0;margin-top:4px;display:none;"></div>
+      </div>
+      <div class="form-group">
+        <label>Headers</label>
+        <div id="edit-headers-editor" class="kv-editor"></div>
+        <input type="hidden" name="headers_json" id="edit-headers_json" value="[]">
+        {{if $d.CanEdit}}
+        <button type="button" class="btn btn-ghost btn-sm kv-add-btn" onclick="kvAddRow('edit-headers-editor')">+ Add Header</button>
+        {{end}}
+      </div>
+      <div class="form-group">
+        <label>Custom Values</label>
+        <div id="edit-cv-editor" class="kv-editor"></div>
+        <input type="hidden" name="custom_values_json" id="edit-custom_values_json" value="[]">
+        {{if $d.CanEdit}}
+        <button type="button" class="btn btn-ghost btn-sm kv-add-btn" onclick="kvAddRow('edit-cv-editor')">+ Add Custom Value</button>
+        {{end}}
+      </div>
+      {{if $d.CanEdit}}
+      <div class="form-group">
+        <label class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="edit-tmpl-re" name="restricted_execution" value="1"><span class="slider"></span></label>
+          Restricted Execution
+        </label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-tmpl')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+      {{else}}
+      <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit-tmpl')">Close</button>
+      </div>
+      {{end}}
+    </form>
+  </div>
+</div>
+<!-- ── WSDL Import Modal ──────────────────────────────────────── -->
+{{if $d.CanEdit}}
+<div class="modal-overlay" id="modal-wsdl">
+  <div class="modal" style="width:700px;">
+    <div class="modal-header">
+      <h3>&#128195; Import from WSDL</h3>
+      <button class="modal-close" onclick="closeModal('modal-wsdl')">&times;</button>
+    </div>
+    <div style="padding:0 4px 8px;">
+      <div class="form-group">
+        <label>WSDL URL</label>
+        <div style="display:flex;gap:8px;">
+          <input id="wsdl-url" type="url" placeholder="http://service/endpoint?wsdl" style="flex:1;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="fetchWSDL()">&#128279; Fetch</button>
+        </div>
+      </div>
+      <div style="text-align:center;color:var(--muted);font-size:.8rem;margin:4px 0;">— or —</div>
+      <div class="form-group">
+        <label>Upload WSDL file</label>
+        <input id="wsdl-file" type="file" accept=".wsdl,.xml">
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="uploadWSDL()">&#128228; Parse file</button>
+      <div id="wsdl-error" style="display:none;color:var(--danger);font-size:.85rem;margin-top:8px;"></div>
+    </div>
+    <div id="wsdl-ops-section" style="display:none;">
+      <hr style="margin:8px 0;">
+      <div style="font-weight:600;margin-bottom:6px;">Operations found — select ones to import:</div>
+      <div id="wsdl-ops-list" style="max-height:300px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-wsdl')">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Save Copy Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-save-copy">
+  <div class="modal" style="width:460px;">
+    <div class="modal-header">
+      <h3>&#128203; Save as Copy</h3>
+      <button class="modal-close" onclick="closeModal('modal-save-copy')">&times;</button>
+    </div>
+    <form method="POST" action="/templates/save-copy" id="form-save-copy">
+      <input type="hidden" name="id" id="copy-src-id">
+      <div class="form-group">
+        <label>New Template Name</label>
+        <input name="name" id="copy-name" required placeholder="Copy of …">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-save-copy')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Copy</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  kvEditorInit('headers-editor',       'headers_json',       []);
+  kvEditorInit('custom-values-editor', 'custom_values_json', []);
+});
+
+function previewVars(input, previewId) {
+  const preview = document.getElementById(previewId);
+  if (!preview) return;
+  const text = input.value;
+  if (!text.match(/\{\{[^}]+\}\}/)) { preview.style.display='none'; return; }
+  preview.style.display = 'block';
+  preview.innerHTML = highlightVars(escHtml(text));
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function openTmplEdit(id) {
+  fetch('/api/templates/' + id)
+    .then(r => r.json())
+    .then(t => {
+      document.getElementById('edit-tmpl-id').value           = t.id;
+      document.getElementById('edit-tmpl-name').value         = t.name;
+      document.getElementById('edit-tmpl-service-name').value = t.service_name || '';
+      document.getElementById('edit-tmpl-path').value         = t.path || '';
+      document.getElementById('edit-tmpl-url').value          = t.url  || '';
+      document.getElementById('edit-tmpl-body').value         = t.body || '';
+      const re = document.getElementById('edit-tmpl-re');
+      if (re) re.checked = !!t.restricted_execution;
+      const sel = document.getElementById('edit-tmpl-method');
+      if (sel) for (let o of sel.options) o.selected = (o.value === t.method);
+      kvEditorInit('edit-headers-editor', 'edit-headers_json',      t.headers       || []);
+      kvEditorInit('edit-cv-editor',      'edit-custom_values_json', t.custom_values || []);
+      openModal('modal-edit-tmpl');
+    });
+}
+
+/* ── Template filter ──────────────────────────────────── */
+function filterTemplates() {
+  const q = (document.getElementById('tmpl-filter').value || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#tmpl-tbody tr[data-name]');
+  let visible = 0;
+  rows.forEach(row => {
+    if (!q ||
+        row.dataset.name.toLowerCase().includes(q) ||
+        (row.dataset.svc  || '').toLowerCase().includes(q) ||
+        (row.dataset.path || '').toLowerCase().includes(q)) {
+      row.style.display = '';
+      visible++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+  const cnt = document.getElementById('tmpl-filter-count');
+  if (cnt) cnt.textContent = q ? visible + ' match' + (visible === 1 ? '' : 'es') : '';
+}
+
+async function parseVarsIntoTemplate() {
+  const btn = document.getElementById('btn-parse-vars');
+  if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
+
+  let allVars;
+  try {
+    allVars = await fetch('/api/variables').then(r => r.json());
+  } catch(e) {
+    alert('Failed to load variables: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Parse Variables'; }
+    return;
+  }
+
+  // Build unique {value, name} pairs, sorted longest-value-first so longer
+  // matches are substituted before shorter ones (prevents partial overwrites).
+  const seen  = new Set();
+  const pairs = [];
+  for (const v of (allVars || [])) {
+    if (!v.values) continue;
+    for (const val of Object.values(v.values)) {
+      if (!val || !val.trim()) continue;
+      const dedupeKey = v.name + '\x00' + val.trim();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      pairs.push({ value: val.trim(), name: v.name });
+    }
+  }
+  pairs.sort((a, b) => b.value.length - a.value.length);
+
+  if (pairs.length === 0) {
+    alert('No variable values are defined. Add variable values first.');
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Parse Variables'; }
+    return;
+  }
+
+  const _OB = '{' + '{';
+  const _CB = '}' + '}';
+
+  function applyReplacements(text) {
+    if (!text) return text;
+    for (const { value, name } of pairs) {
+      const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(escaped, 'g'), _OB + name + _CB);
+    }
+    return text;
+  }
+
+  let totalChanged = 0;
+
+  // URL
+  const urlEl = document.getElementById('edit-tmpl-url');
+  if (urlEl) {
+    const after = applyReplacements(urlEl.value);
+    if (after !== urlEl.value) { urlEl.value = after; totalChanged++; previewVars(urlEl, 'edit-url-preview'); }
+  }
+
+  // Body
+  const bodyEl = document.getElementById('edit-tmpl-body');
+  if (bodyEl) {
+    const after = applyReplacements(bodyEl.value);
+    if (after !== bodyEl.value) { bodyEl.value = after; totalChanged++; previewVars(bodyEl, 'edit-body-preview'); }
+  }
+
+  // Headers KV editor
+  const hJsonEl = document.getElementById('edit-headers_json');
+  if (hJsonEl) {
+    try {
+      const rows = JSON.parse(hJsonEl.value || '[]');
+      let changed = false;
+      for (const row of rows) {
+        const k = applyReplacements(row.key);
+        const v = applyReplacements(row.value);
+        if (k !== row.key || v !== row.value) { row.key = k; row.value = v; changed = true; }
+      }
+      if (changed) { kvEditorInit('edit-headers-editor', 'edit-headers_json', rows); totalChanged++; }
+    } catch(_) {}
+  }
+
+  // Custom Values KV editor
+  const cvJsonEl = document.getElementById('edit-custom_values_json');
+  if (cvJsonEl) {
+    try {
+      const rows = JSON.parse(cvJsonEl.value || '[]');
+      let changed = false;
+      for (const row of rows) {
+        const k = applyReplacements(row.key);
+        const v = applyReplacements(row.value);
+        if (k !== row.key || v !== row.value) { row.key = k; row.value = v; changed = true; }
+      }
+      if (changed) { kvEditorInit('edit-cv-editor', 'edit-custom_values_json', rows); totalChanged++; }
+    } catch(_) {}
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '🔍 Parse Variables'; }
+  if (totalChanged === 0) {
+    alert('No variable values were found in any template field. Make sure the variable values match the literal text in the template.');
+  }
+}
+
+/* ── Save Copy ───────────────────────────────────────────── */
+function openSaveCopy(id, name) {
+  document.getElementById('copy-src-id').value = id;
+  document.getElementById('copy-name').value   = 'Copy of ' + name;
+  openModal('modal-save-copy');
+}
+
+/* ── WSDL Import ─────────────────────────────────────────── */
+let _wsdlOps = [];
+
+function wsdlShowError(msg) {
+  const el = document.getElementById('wsdl-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function wsdlShowOps(ops) {
+  _wsdlOps = ops;
+  const section = document.getElementById('wsdl-ops-section');
+  const list    = document.getElementById('wsdl-ops-list');
+  if (!ops || ops.length === 0) {
+    wsdlShowError('No operations found in the WSDL.');
+    section.style.display = 'none';
+    return;
+  }
+  wsdlShowError('');
+  list.innerHTML = ops.map((op, i) =>
+    '<button type="button" onclick="wsdlSelectOp(' + i + ')" ' +
+    'style="display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;' +
+    'padding:8px 10px;border:none;border-bottom:1px solid var(--border,#e2e8f0);' +
+    'background:transparent;cursor:pointer;" ' +
+    'onmouseover="this.style.background=\'var(--bg-alt,#f4f4f4)\'" ' +
+    'onmouseout="this.style.background=\'transparent\'">' +
+    '<span><strong>' + escHtml(op.name) + '</strong>' +
+    (op.service_name ? ' <span style="color:var(--muted);font-size:.78rem;">(' + escHtml(op.service_name) + ')</span>' : '') + '</span>' +
+    '<span style="font-size:.78rem;color:var(--muted);">' + escHtml(op.method || 'POST') + ' ' + escHtml(op.url || '') + '</span>' +
+    '</button>'
+  ).join('');
+  section.style.display = 'block';
+}
+
+function wsdlSelectOp(idx) {
+  const op = _wsdlOps[idx];
+  if (!op) return;
+  closeModal('modal-wsdl');
+  // Pre-fill Add Template modal fields
+  document.getElementById('add-tmpl-name').value         = op.name         || '';
+  document.getElementById('add-tmpl-service-name').value = op.service_name || '';
+  document.getElementById('add-tmpl-path').value         = '';
+  document.getElementById('add-tmpl-url').value          = op.url          || '';
+  document.getElementById('add-tmpl-body').value         = op.body         || '';
+  // Set method
+  const methodSel = document.querySelector('#form-add-tmpl [name="method"]');
+  if (methodSel) {
+    const m = (op.method || 'POST').toUpperCase();
+    for (const o of methodSel.options) o.selected = (o.value === m);
+  }
+  // Populate headers KV editor; clear custom values
+  const headers = (op.headers || []).map(h => ({ key: h.key, value: h.value }));
+  kvEditorInit('headers-editor',       'headers_json',       headers);
+  kvEditorInit('custom-values-editor', 'custom_values_json', []);
+  openModal('modal-add-tmpl');
+}
+
+async function fetchWSDL() {
+  const url = document.getElementById('wsdl-url').value.trim();
+  if (!url) { wsdlShowError('Enter a WSDL URL.'); return; }
+  wsdlShowError('');
+  document.getElementById('wsdl-ops-section').style.display = 'none';
+  try {
+    const resp = await fetch('/api/templates/parse-wsdl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await resp.json();
+    if (data.error) { wsdlShowError(data.error); return; }
+    wsdlShowOps(data);
+  } catch(e) { wsdlShowError('Network error: ' + e.message); }
+}
+
+async function uploadWSDL() {
+  const fileInput = document.getElementById('wsdl-file');
+  if (!fileInput.files.length) { wsdlShowError('Select a WSDL file first.'); return; }
+  wsdlShowError('');
+  document.getElementById('wsdl-ops-section').style.display = 'none';
+  const fd = new FormData();
+  fd.append('wsdl_file', fileInput.files[0]);
+  try {
+    const resp = await fetch('/api/templates/parse-wsdl', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (data.error) { wsdlShowError(data.error); return; }
+    wsdlShowOps(data);
+  } catch(e) { wsdlShowError('Network error: ' + e.message); }
+}
+
+</script>
+{{end}}

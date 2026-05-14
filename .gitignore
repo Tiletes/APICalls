@@ -1,0 +1,18 @@
+# Binaries
+*.exe
+*.out
+apicalls
+
+# Data & logs (generated at runtime)
+data/
+logs/
+
+# TLS certificates (replace with your own signed certs)
+certs/
+
+# Go build cache
+vendor/
+
+# IDE
+.vscode/
+.idea/

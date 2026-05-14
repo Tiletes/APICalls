@@ -1,0 +1,61 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>APICalls{{block "title" .}} {{end}}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+{{if .User}}
+<!-- ════ Sidebar ════ -->
+<aside id="sidebar">
+  <div class="brand">
+    <h1>&#9889; APICalls</h1>
+    <span>API Testing Platform</span>
+  </div>
+  <nav>
+    <a href="/"             class="{{if eq .ActiveMenu "dashboard"}}active{{end}}"><span class="icon">&#127968;</span> Dashboard</a>
+    <a href="/environments" class="{{if eq .ActiveMenu "environments"}}active{{end}}"><span class="icon">&#127757;</span> Environments</a>
+    <a href="/variables"          class="{{if eq .ActiveMenu "variables"}}active{{end}}"><span class="icon">&#128196;</span> Variables</a>
+    <a href="/reserved-variables" class="{{if eq .ActiveMenu "reserved_variables"}}active{{end}}"><span class="icon">&#128273;</span> Reserved Vars</a>
+    <a href="/technologies"       class="{{if eq .ActiveMenu "technologies"}}active{{end}}"><span class="icon">&#9881;</span> Technologies</a>
+    <a href="/templates"    class="{{if eq .ActiveMenu "templates"}}active{{end}}"><span class="icon">&#128196;</span> Templates</a>
+    <a href="/execution"    class="{{if eq .ActiveMenu "execution"}}active{{end}}"><span class="icon">&#9654;</span> Execution</a>
+    {{if eq .User.Role "admin"}}
+    <a href="/users"        class="{{if eq .ActiveMenu "users"}}active{{end}}"><span class="icon">&#128100;</span> Users</a>
+    {{end}}
+  </nav>
+</aside>
+
+<!-- ════ Top Bar ════ -->
+<header id="topbar">
+  <span class="page-title">{{block "page-title" .}}APICalls{{end}}</span>
+  <div class="user-info">
+    <span class="uname">{{.User.Username}}</span>
+    <span class="role-badge role-{{.User.Role}}">{{roleLabel .User.Role}}</span>
+    <span class="ip">&#128205; {{.ClientIP}}</span>
+    <span class="logout"><a href="/logout">Logout &#8594;</a></span>
+  </div>
+</header>
+
+<!-- ════ Main ════ -->
+<main id="main">
+  {{if .Flash}}
+  <div class="flash info">{{.Flash}}</div>
+  {{end}}
+  {{block "content" .}}{{end}}
+</main>
+
+{{else}}
+<!-- Login page – no chrome -->
+{{block "content" .}}{{end}}
+{{end}}
+
+<script src="/static/js/app.js"></script>
+{{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}
